@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+
+// In-memory storage for products
+const productsStore: Array<{
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  status: string;
+  currentStep: number;
+  createdAt: Date;
+}> = [];
+
+let productsIdCounter = 0;
 
 export async function GET() {
   try {
-    const products = await db.product.findMany({
-      include: { assets: true },
-      orderBy: { createdAt: 'desc' }
-    });
-
     return NextResponse.json({
       success: true,
-      products
+      products: productsStore
     });
   } catch (error) {
     console.error('Products fetch error:', error);
@@ -23,48 +30,19 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      title, 
-      description, 
-      type, 
-      targetAudience, 
-      problemStatement,
-      ideaId 
-    } = await request.json();
+    const { title, description, type } = await request.json();
 
-    let user = await db.userProfile.findFirst();
-    if (!user) {
-      user = await db.userProfile.create({
-        data: {
-          name: 'Creator',
-          email: 'creator@example.com',
-          background: 'dropshipping',
-          facebookFollowers: 20000,
-        }
-      });
-    }
+    const product = {
+      id: `product-${++productsIdCounter}`,
+      title: title || 'Untitled Product',
+      description: description || '',
+      type: type || 'guide',
+      status: 'concept',
+      currentStep: 1,
+      createdAt: new Date(),
+    };
 
-    const product = await db.product.create({
-      data: {
-        userId: user.id,
-        title,
-        description: description || '',
-        type: type || 'guide',
-        targetAudience: targetAudience || '',
-        problemStatement: problemStatement || '',
-        currentStep: 1,
-        status: 'concept',
-        ideaId: ideaId || null
-      }
-    });
-
-    // If this is from an idea, update the idea status
-    if (ideaId) {
-      await db.productIdea.update({
-        where: { id: ideaId },
-        data: { status: 'selected' }
-      });
-    }
+    productsStore.unshift(product);
 
     return NextResponse.json({
       success: true,
@@ -81,22 +59,26 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, step, status, solution, pricing } = await request.json();
+    const { id, step, status } = await request.json();
 
-    const product = await db.product.update({
-      where: { id },
-      data: {
-        currentStep: step,
-        status: status,
-        solution: solution,
-        pricing: pricing
-      }
-    });
+    const productIndex = productsStore.findIndex(p => p.id === id);
+    if (productIndex >= 0) {
+      productsStore[productIndex] = {
+        ...productsStore[productIndex],
+        currentStep: step ?? productsStore[productIndex].currentStep,
+        status: status ?? productsStore[productIndex].status,
+      };
 
-    return NextResponse.json({
-      success: true,
-      product
-    });
+      return NextResponse.json({
+        success: true,
+        product: productsStore[productIndex]
+      });
+    }
+
+    return NextResponse.json(
+      { error: 'Product not found' },
+      { status: 404 }
+    );
   } catch (error) {
     console.error('Product update error:', error);
     return NextResponse.json(

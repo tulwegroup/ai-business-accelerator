@@ -1,121 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextResponse } from 'next/server';
 
-export async function GET() {
-  try {
-    let user = await db.userProfile.findFirst();
-    if (!user) {
-      user = await db.userProfile.create({
-        data: {
-          name: 'Creator',
-          email: 'creator@example.com',
-          background: 'dropshipping',
-          facebookFollowers: 20000,
-        }
-      });
-    }
-
-    // Get progress for all 12 weeks
-    const progress = await db.weeklyProgress.findMany({
-      where: { userId: user.id },
-      orderBy: { weekNumber: 'asc' }
-    });
-
-    // Get counts
-    const productsCreated = await db.product.count({
-      where: { userId: user.id }
-    });
-
-    const ideasGenerated = await db.productIdea.count({
-      where: { userId: user.id }
-    });
-
-    const contentCreated = await db.contentItem.count({
-      where: { userId: user.id }
-    });
-
-    return NextResponse.json({
-      success: true,
-      currentWeek: user.currentWeek,
-      progress,
-      stats: {
-        productsCreated,
-        ideasGenerated,
-        contentCreated
-      }
-    });
-  } catch (error) {
-    console.error('Progress fetch error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch progress' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { weekNumber, status, reflection } = await request.json();
-
-    let user = await db.userProfile.findFirst();
-    if (!user) {
-      user = await db.userProfile.create({
-        data: {
-          name: 'Creator',
-          email: 'creator@example.com',
-          background: 'dropshipping',
-          facebookFollowers: 20000,
-        }
-      });
-    }
-
-    // Update or create progress
-    const existing = await db.weeklyProgress.findFirst({
-      where: { userId: user.id, weekNumber }
-    });
-
-    if (existing) {
-      await db.weeklyProgress.update({
-        where: { id: existing.id },
-        data: {
-          missionStatus: status,
-          reflection,
-          completedAt: status === 'completed' ? new Date() : null
-        }
-      });
-    } else {
-      await db.weeklyProgress.create({
-        data: {
-          userId: user.id,
-          weekNumber,
-          phase: getPhaseForWeek(weekNumber),
-          missionTitle: getMissionTitle(weekNumber),
-          missionStatus: status,
-          reflection
-        }
-      });
-    }
-
-    // Update user's current week if completing
-    if (status === 'completed' && weekNumber >= user.currentWeek) {
-      await db.userProfile.update({
-        where: { id: user.id },
-        data: { currentWeek: Math.min(weekNumber + 1, 12) }
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Progress updated'
-    });
-  } catch (error) {
-    console.error('Progress update error:', error);
-    return NextResponse.json(
-      { error: 'Failed to update progress' },
-      { status: 500 }
-    );
-  }
-}
+// In-memory storage for progress (works on Vercel)
+const progressStore = {
+  currentWeek: 1,
+  productsCreated: 0,
+  ideasGenerated: 0,
+  contentCreated: 0,
+  progress: Array.from({ length: 12 }, (_, i) => ({
+    weekNumber: i + 1,
+    phase: getPhaseForWeek(i + 1),
+    missionTitle: getMissionTitle(i + 1),
+    missionStatus: i === 0 ? 'in-progress' : 'not-started',
+  })),
+};
 
 function getPhaseForWeek(week: number): string {
   if (week <= 2) return 'Phase 1: AI Literacy';
@@ -141,4 +38,53 @@ function getMissionTitle(week: number): string {
     12: 'Scale & Optimize'
   };
   return titles[week] || `Week ${week} Mission`;
+}
+
+export async function GET() {
+  try {
+    return NextResponse.json({
+      success: true,
+      currentWeek: progressStore.currentWeek,
+      progress: progressStore.progress,
+      stats: {
+        productsCreated: progressStore.productsCreated,
+        ideasGenerated: progressStore.ideasGenerated,
+        contentCreated: progressStore.contentCreated,
+      }
+    });
+  } catch (error) {
+    console.error('Progress fetch error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch progress' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const { weekNumber, status } = await request.json();
+
+    // Update progress in memory
+    const existingIndex = progressStore.progress.findIndex(p => p.weekNumber === weekNumber);
+    if (existingIndex >= 0) {
+      progressStore.progress[existingIndex].missionStatus = status;
+    }
+
+    // Update current week if completing
+    if (status === 'completed' && weekNumber >= progressStore.currentWeek) {
+      progressStore.currentWeek = Math.min(weekNumber + 1, 12);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Progress updated'
+    });
+  } catch (error) {
+    console.error('Progress update error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update progress' },
+      { status: 500 }
+    );
+  }
 }
