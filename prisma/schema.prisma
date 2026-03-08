@@ -1,0 +1,181 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User profile with business context
+model UserProfile {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  avatar          String?
+  background      String?  // dropshipping, etc.
+  facebookPage    String?
+  facebookFollowers Int    @default(20000)
+  goals           String?  // JSON array of goals
+  currentWeek     Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  products        Product[]
+  contentItems    ContentItem[]
+  ideas           ProductIdea[]
+  progress        WeeklyProgress[]
+  chatHistory     ChatMessage[]
+  tasks           UserTask[]
+}
+
+// Product Ideas Engine
+model ProductIdea {
+  id              String   @id @default(cuid())
+  title           String
+  description     String
+  category        String   // AI tools, guides, prompt packs, etc.
+  targetAudience  String
+  problemSolved   String
+  buildComplexity String   // easy, medium, hard
+  monetizationModel String
+  priceRange      String
+  marketingAngle  String
+  potentialScore  Int      @default(0) // 1-100 ranking
+  status          String   @default("idea") // idea, selected, building, launched
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  userId          String
+  user            UserProfile @relation(fields: [userId], references: [id])
+  product         Product?
+}
+
+// Digital Products being built
+model Product {
+  id              String   @id @default(cuid())
+  title           String
+  description     String
+  type            String   // guide, prompt-pack, mini-course, tool, assistant
+  status          String   @default("concept") // concept, mvp, launched
+  currentStep     Int      @default(1) // 1-6 steps
+  targetAudience  String
+  problemStatement String
+  solution        String   @default("")
+  pricing         String?
+  launchDate      DateTime?
+  revenue         Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId          String
+  user            UserProfile @relation(fields: [userId], references: [id])
+  ideaId          String?   @unique
+  idea            ProductIdea? @relation(fields: [ideaId], references: [id])
+  assets          ProductAsset[]
+}
+
+// Product assets and deliverables
+model ProductAsset {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product @relation(fields: [productId], references: [id])
+  type            String   // cover-image, content, marketing-copy, landing-page
+  content         String   // content or file path
+  createdAt       DateTime @default(now())
+}
+
+// Content Engine - Facebook content
+model ContentItem {
+  id              String   @id @default(cuid())
+  type            String   // post, story, video-script, engagement, promotion
+  title           String
+  content         String
+  imagePrompt     String?
+  scheduledFor    DateTime?
+  status          String   @default("draft") // draft, scheduled, published
+  engagementScore Int?
+  likes           Int      @default(0)
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+  createdAt       DateTime @default(now())
+  publishedAt     DateTime?
+
+  userId          String
+  user            UserProfile @relation(fields: [userId], references: [id])
+}
+
+// 12-Week Accelerator Progress
+model WeeklyProgress {
+  id              String   @id @default(cuid())
+  weekNumber      Int
+  phase           String   // phase-1, phase-2, etc.
+  missionTitle    String
+  missionStatus   String   @default("not-started") // not-started, in-progress, completed
+  toolsLearned    String?  // JSON array
+  promptsCreated  Int      @default(0)
+  reflection      String?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId          String
+  user            UserProfile @relation(fields: [userId], references: [id])
+}
+
+// AI Mentor Chat History
+model ChatMessage {
+  id              String   @id @default(cuid())
+  role            String   // user, assistant
+  content         String
+  context         String?  // what module/context the chat is about
+  createdAt       DateTime @default(now())
+
+  userId          String
+  user            UserProfile @relation(fields: [userId], references: [id])
+}
+
+// User Tasks and Action Items
+model UserTask {
+  id              String   @id @default(cuid())
+  title           String
+  description     String?
+  category        String   // product, content, learning, engagement
+  priority        String   @default("medium") // low, medium, high
+  status          String   @default("pending") // pending, in-progress, completed
+  dueDate         DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId          String
+  user            UserProfile @relation(fields: [userId], references: [id])
+}
+
+// AI Tools discovered
+model AITool {
+  id              String   @id @default(cuid())
+  name            String
+  category        String   // reasoning, image, video, automation, builder
+  description     String
+  useCase         String
+  tutorialUrl     String?
+  isRecommended   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+}
+
+// Weekly Reports
+model WeeklyReport {
+  id              String   @id @default(cuid())
+  weekNumber      Int
+  toolsLearned    String?  // JSON array
+  productsCreated Int      @default(0)
+  promptsDeveloped Int     @default(0)
+  contentPublished Int     @default(0)
+  engagementRate  Float?
+  recommendations  String? // JSON array
+  createdAt       DateTime @default(now())
+}
